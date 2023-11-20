@@ -19,7 +19,7 @@ app.use(express.json());
 
 app.use(cors("*"));
 
-var hostname = '192.168.10.111';
+//var hostname = '192.168.10.111';
 
 // Definir un endpoint
 app.get('/api/hello', (req, res) => {
@@ -180,6 +180,6 @@ app.get('/api/throughts/:userEmail', async (req, res) => {
 
 
 // Iniciar el servidor
-app.listen(port, hostname,() => {
-    console.log(`Servidor Express escuchando en el puerto ${hostname}:${port}`);
+app.listen(port,() => {
+    console.log(`Servidor Express escuchando en el puerto ${port}`);
 });
