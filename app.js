@@ -6,6 +6,8 @@ const bcrypt = require('bcrypt');
 const cors = require("cors");
 const MongoClient = require('mongodb').MongoClient;
 const punycode = require('punycode');
+const Idea = require("./classes/Idea");
+
 
 const encoded = punycode.encode('xn--jnglmh2h');
 console.log(encoded); // Output: jnglmh2h
@@ -13,10 +15,8 @@ console.log(encoded); // Output: jnglmh2h
 // Configuración de la base de datos
 const mongoURL = 'mongodb+srv://harrisondiaz:aquiles01@cluster0.5y7z6jv.mongodb.net/?retryWrites=true&w=majority';
 const databaseName =  'test';
+app.use(express.json());
 
-// Configuración de los middlewares
-app.use(bodyParser.urlencoded({ extended: false }));
-app.use(bodyParser.json());
 app.use(cors("*"));
 
 var hostname = '192.168.10.111';
@@ -45,79 +45,45 @@ app.get('/api/ideas', async (req, res) => {
     res.json(results);
 });
 
-// Definir endpoint para obtener una idea por ID desde la base de datos MongoDB
-app.get('/api/ideas/:id', async (req, res) => {
-    // Obtener el ID de la idea
-    const ideaId = parseInt(req.params.id);
 
-    // Validar el ID
-    if (isNaN(ideaId)) {
-        return res.status(400).json({ message: 'ID de la idea no válido' });
-    }
 
-    // Conectarse a la base de datos
-    const client = await MongoClient.connect(mongoURL, { retryWrites: true, w: 'majority'});
 
-    // Obtener la colección de ideas
-    const db = client.db(databaseName);
-    const collection = db.collection('Ideas');
+app.post('/api/newideas', async (req, res) => {
+    try {
+        //console.log(req);
+        // Connect to the database
+        const client = await MongoClient.connect(mongoURL, { retryWrites: true, w: 'majority' });
+        const db = client.db(databaseName);
+        const ideasCollection = db.collection('Ideas');
 
-    // Obtener la idea
-    const result = await collection.findOne({ IdeaID: ideaId });
+        // Check if the IdeaID document exists
+        const lastIdea = await ideasCollection.findOne({}, { sort: { IdeaID: -1 } });
+        const newIdeaID = lastIdea ? lastIdea.IdeaID + 1 : 1;
 
-    // Cerrar la conexión
-    client.close();
+        // Create the new idea
 
-    // Enviar la respuesta
-    if (!result) {
-        return res.status(404).json({ message: 'Idea no encontrada' });
-    } else {
-        res.json(result);
+        const newIdea = Idea.fromJson(req.body);
+        newIdea.IdeaID = newIdeaID;
+
+
+        // Insert the new idea into the 'Ideas' collection
+        const insertResult = await ideasCollection.insertOne(newIdea.toJson());
+
+        // Close the connection
+        client.close();
+
+        // Send the response
+        if (!insertResult.acknowledged) {
+            return res.status(500).json({ message: 'Error creating idea' });
+        }
+
+        res.json({ message: 'Idea created successfully' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Internal server error' });
     }
 });
 
-
-app.post('/api/ideas', async (req, res) => {
-    // Conectarse a la base de datos
-    const client = await MongoClient.connect(mongoURL, { retryWrites: true, w: 'majority'});
-
-    // Obtener el siguiente ID de idea
-    const db = client.db(databaseName);
-    const countersCollection = db.collection('Ideas');
-
-    const counterResult = await countersCollection.findOneAndUpdate(
-        { _id: 'IdeaID' },
-        { $inc: { value: 1 } },
-        { returnOriginal: false }
-    );
-
-    if (!counterResult.value) {
-        return res.status(500).json({ message: 'Error al generar el ID de la idea' });
-    }
-
-    const newIdeaID = counterResult.value.value;
-
-    // Crear la nueva idea
-    const newIdea = {
-        IdeaID: newIdeaID,
-        Title: req.body.Title,
-        Description: req.body.Description,
-        CreatedBy: req.body.CreatedBy
-    };
-
-    const ideasCollection = db.collection('Ideas');
-    const insertResult = await ideasCollection.insertOne(newIdea);
-
-    if (!insertResult.acknowledged) {
-        return res.status(500).json({ message: 'Error al crear la idea' });
-    }
-
-    // Cerrar la conexión
-    client.close();
-
-    // Enviar la respuesta
-    res.json({ message: 'Idea creada exitosamente' });
-});
 
 
 // definir un end point de tipo post para crear usuarios nuevos en la base de datos
@@ -181,6 +147,35 @@ app.post('/api/users', async (req, res) => {
     res.json({ message: 'Usuario creado exitosamente' });
     console.log("Usuario creado exitosamente");
 });
+
+
+//Endpoint que traiga todos los Throughts de la base de datos segun el email del usuario que se le apsa por parametro con sus Ideas asociadas
+app.get('/api/throughts/:userEmail', async (req, res) => {
+        const userEmail = req.params.userEmail;
+
+    const client = await MongoClient.connect(mongoURL, { retryWrites: true, w: 'majority'});
+
+    // Obtener el siguiente ID de usuario
+    const db = client.db(databaseName);
+    const Thought = db.collection('Thoughts');
+    const Idea = db.collection('Ideas');
+
+        try {
+            // Obtener Thoughts creados por el usuario
+            const thoughts = await Thought.find({ UserEmail: userEmail }).toArray();
+            //console.log(thoughts);
+
+            // Obtener Ideas creadas por el usuario
+            const ideas = await Idea.find({ CreatedBy: userEmail }).toArray();
+            //console.log(ideas);
+            // Devolver los resultados
+            res.json( ideas);
+        } catch (error) {
+            res.status(500).json({ error: error.message });
+        }
+    }
+);
+
 
 
 
